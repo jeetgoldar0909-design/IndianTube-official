@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>IndianTube Pro - Universal Casting</title>
+    <title>IndianTube - Smooth Cast</title>
     
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0..1,0" />
@@ -366,7 +366,7 @@
                 
                 <div id="casting-overlay" class="casting-active-overlay">
                     <span class="material-symbols-rounded">cast_connected</span>
-                    <div style="font-size:16px; margin-bottom:5px;">Playing on External Display</div>
+                    <div style="font-size:16px; margin-bottom:5px;">Playing on TV</div>
                     <div id="cast-device-name-display" style="font-size:14px; color:#aaa;">Connected</div>
                 </div>
 
@@ -583,7 +583,6 @@
         let isPublicSubscribed = false;
         let tempAvatarUrl = "";
         let tempBannerUrl = "";
-        let currentVideoDataForCast = null;
 
         // --- CHAT VARIABLES ---
         let chatTargetUser = null;
@@ -656,59 +655,54 @@
             loadFeed();
             setupSeekbar();
             subscribeToMessages(); 
-            setupRemotePlaybackListeners(); // Initialize Native Casting Logic
         }
 
-        // --- NATIVE CASTING LOGIC (NO CHROME SDK REQUIRED) ---
+        // --- UPDATED CASTING LOGIC (NO ALERTS, BETTER FALLBACK) ---
         async function triggerNativeCast() {
             const video = document.getElementById('main-video');
             if (!video) return;
 
-            // Option 1: Modern Remote Playback API (Android/Chrome/Edge)
+            // Method 1: Try Remote Playback API (New Android/Chrome)
             if (video.remote && typeof video.remote.prompt === 'function') {
-                try {
-                    await video.remote.prompt();
-                } catch (e) {
-                    console.log('Remote playback prompt failed or cancelled', e);
-                }
+                video.remote.prompt().catch(error => {
+                    console.log("Remote prompt failed, switching to fallback");
+                    enableNativeFallback(video);
+                });
             } 
-            // Option 2: iOS / Safari (AirPlay)
+            // Method 2: iOS AirPlay
             else if (video.webkitShowPlaybackTargetPicker) {
                 video.webkitShowPlaybackTargetPicker();
             } 
-            // Option 3: Fallback
+            // Method 3: Fallback (Alert hata diya, seedha kaam karega)
             else {
-                alert("Native Casting not supported. Try using Chrome (Android) or Safari (iOS).");
+                enableNativeFallback(video);
             }
         }
 
-        // Monitor Remote Playback State for Overlay
-        function setupRemotePlaybackListeners() {
-            const video = document.getElementById('main-video');
-            if (video && video.remote) {
-                video.remote.addEventListener('connect', () => {
-                    const overlay = document.getElementById('casting-overlay');
-                    if(overlay) {
-                        overlay.style.display = 'flex';
-                        document.getElementById('cast-device-name-display').innerText = "External Display";
-                    }
-                    document.querySelectorAll('.material-symbols-rounded').forEach(el => {
-                        if(el.innerText === 'cast') el.classList.add('cast-icon-active');
-                    });
-                });
-
-                video.remote.addEventListener('disconnect', () => {
-                    const overlay = document.getElementById('casting-overlay');
-                    if(overlay) overlay.style.display = 'none';
-                    document.querySelectorAll('.material-symbols-rounded').forEach(el => {
-                        if(el.innerText === 'cast') el.classList.remove('cast-icon-active');
-                    });
-                });
+        function enableNativeFallback(video) {
+            // Browser ke apne controls on kar do taaki user wahan se cast kar sake
+            video.controls = true; 
+            
+            // Auto Fullscreen try karo (Android native player fullscreen mein Cast icon dikhata hai)
+            if (video.requestFullscreen) {
+                video.requestFullscreen().catch(e => console.log("Fullscreen blocked"));
+            } else if (video.webkitRequestFullscreen) {
+                video.webkitRequestFullscreen();
             }
-            // For iOS webkit wireless video playback
-            video.addEventListener('webkitplaybacktargetavailabilitychanged', function(event) {
-                // Can use this to show/hide cast button based on availability
-            });
+            
+            // User ko chhota sa message dikhao
+            Toastify({
+                text: "Opening Player Controls... Look for Cast icon there", 
+                duration: 4000,
+                style: { background: "#333", color: "#fff" },
+                gravity: "bottom",
+                position: "center"
+            }).showToast();
+
+            // 8 second baad controls wapas chhupa do agar user ne kuch nahi kiya
+            setTimeout(() => {
+                if(!video.paused) video.controls = false;
+            }, 8000);
         }
 
         // --- NATIVE VIDEO UPLOAD ---
@@ -1105,9 +1099,7 @@
         function playStandaloneVideo(videoData) {
             currentVideoId=videoData.id; 
             currentUploader=videoData.uploader_name;
-            currentVideoDataForCast = videoData; 
-
-            // Always update source for native element
+            
             const v = document.getElementById('main-video');
             v.src=videoData.video_url; 
             v.play();
@@ -1416,7 +1408,6 @@
             chatSubscription = supabase.channel('public:messages')
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
                 const newMsg = payload.new;
-                // Only append if chat is open AND msg belongs to this chat AND I am the receiver (sender logic handled optimistically)
                 if(document.getElementById('chat-room').style.display === 'flex' 
                    && newMsg.sender_text === chatTargetUser 
                    && newMsg.receiver_text === currentUser.username) {

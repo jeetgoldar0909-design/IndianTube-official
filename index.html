@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>IndianTube Pro - Real Casting</title>
+    <title>IndianTube Pro - Universal Casting</title>
     
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0..1,0" />
@@ -13,8 +13,6 @@
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
     <script src="https://upload-widget.cloudinary.com/global/all.js" type="text/javascript"></script>
-
-    <script src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
 
     <style>
         /* --- GLOBAL STYLES --- */
@@ -341,7 +339,6 @@
         <header class="header" id="main-header">
             <div class="brand"><span class="material-symbols-rounded" style="color:red;">play_circle</span> IndianTube</div>
             <div style="display:flex; gap:15px; align-items:center;">
-                <button is="google-cast-button" id="header-cast-btn" style="display:none;"></button>
                 <span class="material-symbols-rounded" onclick="triggerNativeCast()">cast</span>
                 
                 <span class="material-symbols-rounded" onclick="openInbox()" style="position:relative;">
@@ -365,11 +362,11 @@
 
         <div id="player" class="fullscreen">
             <div class="player-video-box" onclick="toggleControls()">
-                <video id="main-video" playsinline webkit-playsinline></video>
+                <video id="main-video" playsinline webkit-playsinline x-webkit-airplay="allow"></video>
                 
                 <div id="casting-overlay" class="casting-active-overlay">
                     <span class="material-symbols-rounded">cast_connected</span>
-                    <div style="font-size:16px; margin-bottom:5px;">Playing on TV</div>
+                    <div style="font-size:16px; margin-bottom:5px;">Playing on External Display</div>
                     <div id="cast-device-name-display" style="font-size:14px; color:#aaa;">Connected</div>
                 </div>
 
@@ -588,111 +585,10 @@
         let tempBannerUrl = "";
         let currentVideoDataForCast = null;
 
-        // --- REAL CASTING VARIABLES ---
-        let castContext;
-        let castSession;
-
-        // --- CHAT VARIABLES (NEW) ---
+        // --- CHAT VARIABLES ---
         let chatTargetUser = null;
         let chatSubscription = null;
         let allUsersList = [];
-
-        // --- INITIALIZE GOOGLE CAST ---
-        window['__onGCastApiAvailable'] = function(isAvailable) {
-            if (isAvailable) {
-                initializeCastApi();
-            }
-        };
-
-        function initializeCastApi() {
-            cast.framework.CastContext.getInstance().setOptions({
-                receiverApplicationId: chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID,
-                autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED
-            });
-
-            castContext = cast.framework.CastContext.getInstance();
-            
-            // Listen to Cast State
-            castContext.addEventListener(
-                cast.framework.CastContextEventType.CAST_STATE_CHANGED,
-                (e) => {
-                    // Update icon UI if needed based on e.castState
-                }
-            );
-
-            // Listen to Session State (Connected/Disconnected)
-            castContext.addEventListener(
-                cast.framework.CastContextEventType.SESSION_STATE_CHANGED,
-                (e) => {
-                    switch (e.sessionState) {
-                        case cast.framework.SessionState.SESSION_STARTED:
-                        case cast.framework.SessionState.SESSION_RESUMED:
-                            castSession = castContext.getCurrentSession();
-                            onCastSessionStarted();
-                            break;
-                        case cast.framework.SessionState.SESSION_ENDED:
-                            onCastSessionEnded();
-                            break;
-                    }
-                }
-            );
-        }
-
-        function triggerNativeCast() {
-            if(castContext) {
-                castContext.requestSession();
-            } else {
-                alert("Casting not available. Use Chrome Browser via HTTPS/Localhost.");
-            }
-        }
-
-        function onCastSessionStarted() {
-            // UI Update
-            document.querySelectorAll('.material-symbols-rounded').forEach(el => {
-                if(el.innerText === 'cast') el.classList.add('cast-icon-active');
-            });
-
-            // Show Overlay
-            const overlay = document.getElementById('casting-overlay');
-            if(overlay) {
-                overlay.style.display = 'flex';
-                document.getElementById('cast-device-name-display').innerText = castSession.getCastDevice().friendlyName;
-            }
-
-            // Load Media if video is already selected
-            if(currentVideoDataForCast) {
-                loadMediaToCast(currentVideoDataForCast.video_url, currentVideoDataForCast.title);
-            }
-        }
-
-        function onCastSessionEnded() {
-             // UI Update
-             document.querySelectorAll('.material-symbols-rounded').forEach(el => {
-                if(el.innerText === 'cast') el.classList.remove('cast-icon-active');
-            });
-            
-            const overlay = document.getElementById('casting-overlay');
-            if(overlay) overlay.style.display = 'none';
-            
-            castSession = null;
-        }
-
-        function loadMediaToCast(url, title) {
-            if(!castSession) return;
-
-            const mediaInfo = new chrome.cast.media.MediaInfo(url, 'video/mp4');
-            mediaInfo.metadata = new chrome.cast.media.GenericMediaMetadata();
-            mediaInfo.metadata.metadataType = chrome.cast.media.MetadataType.GENERIC;
-            mediaInfo.metadata.title = title;
-            mediaInfo.metadata.images = [{url: 'https://via.placeholder.com/150'}];
-
-            const request = new chrome.cast.media.LoadRequest(mediaInfo);
-            
-            castSession.loadMedia(request).then(
-                function() { console.log('Load succeed'); },
-                function(errorCode) { console.log('Error code: ' + errorCode); }
-            );
-        }
 
         // --- AUTH & APP LOGIC ---
 
@@ -759,7 +655,60 @@
             document.getElementById('com-my-avatar').src=currentUser.avatar_url; 
             loadFeed();
             setupSeekbar();
-            subscribeToMessages(); // NEW: Start listening for messages
+            subscribeToMessages(); 
+            setupRemotePlaybackListeners(); // Initialize Native Casting Logic
+        }
+
+        // --- NATIVE CASTING LOGIC (NO CHROME SDK REQUIRED) ---
+        async function triggerNativeCast() {
+            const video = document.getElementById('main-video');
+            if (!video) return;
+
+            // Option 1: Modern Remote Playback API (Android/Chrome/Edge)
+            if (video.remote && typeof video.remote.prompt === 'function') {
+                try {
+                    await video.remote.prompt();
+                } catch (e) {
+                    console.log('Remote playback prompt failed or cancelled', e);
+                }
+            } 
+            // Option 2: iOS / Safari (AirPlay)
+            else if (video.webkitShowPlaybackTargetPicker) {
+                video.webkitShowPlaybackTargetPicker();
+            } 
+            // Option 3: Fallback
+            else {
+                alert("Native Casting not supported. Try using Chrome (Android) or Safari (iOS).");
+            }
+        }
+
+        // Monitor Remote Playback State for Overlay
+        function setupRemotePlaybackListeners() {
+            const video = document.getElementById('main-video');
+            if (video && video.remote) {
+                video.remote.addEventListener('connect', () => {
+                    const overlay = document.getElementById('casting-overlay');
+                    if(overlay) {
+                        overlay.style.display = 'flex';
+                        document.getElementById('cast-device-name-display').innerText = "External Display";
+                    }
+                    document.querySelectorAll('.material-symbols-rounded').forEach(el => {
+                        if(el.innerText === 'cast') el.classList.add('cast-icon-active');
+                    });
+                });
+
+                video.remote.addEventListener('disconnect', () => {
+                    const overlay = document.getElementById('casting-overlay');
+                    if(overlay) overlay.style.display = 'none';
+                    document.querySelectorAll('.material-symbols-rounded').forEach(el => {
+                        if(el.innerText === 'cast') el.classList.remove('cast-icon-active');
+                    });
+                });
+            }
+            // For iOS webkit wireless video playback
+            video.addEventListener('webkitplaybacktargetavailabilitychanged', function(event) {
+                // Can use this to show/hide cast button based on availability
+            });
         }
 
         // --- NATIVE VIDEO UPLOAD ---
@@ -1156,16 +1105,12 @@
         function playStandaloneVideo(videoData) {
             currentVideoId=videoData.id; 
             currentUploader=videoData.uploader_name;
-            currentVideoDataForCast = videoData; // Store for casting
+            currentVideoDataForCast = videoData; 
 
-            // Check if already casting
-            if(castSession) {
-                loadMediaToCast(videoData.video_url, videoData.title);
-            } else {
-                const v = document.getElementById('main-video');
-                v.src=videoData.video_url; 
-                v.play();
-            }
+            // Always update source for native element
+            const v = document.getElementById('main-video');
+            v.src=videoData.video_url; 
+            v.play();
 
             document.getElementById('fs-title').innerText=videoData.title;
             document.getElementById('fs-uploader').innerText=videoData.uploader_name;
@@ -1230,14 +1175,6 @@
         }
 
         function togglePlay(){
-            // If casting, toggle remote player
-            if(castSession) {
-                const remotePlayer = new cast.framework.RemotePlayer();
-                const controller = new cast.framework.RemotePlayerController(remotePlayer);
-                controller.playOrPause();
-                return;
-            }
-            // Local Player
             const v=document.getElementById('main-video'); 
             v.paused?v.play():v.pause(); 
             updateIcon();
@@ -1387,7 +1324,7 @@
             }
         }
         
-        // --- CHAT FUNCTIONS (NEW) ---
+        // --- CHAT FUNCTIONS ---
         async function openInbox() {
             document.getElementById('inbox-screen').style.display = 'flex';
             const list = document.getElementById('inbox-list-container');
@@ -1504,7 +1441,6 @@
         function closeChatRoom() { document.getElementById('chat-room').style.display = 'none'; chatTargetUser = null; }
         
         function startChatFromProfile() {
-             // We use currentPublicUser global from profile logic
              if(currentPublicUser === currentUser.username) return alert("You cannot chat with yourself");
              const userVid = allRawData.find(v => v.uploader_name === currentPublicUser);
              const avatar = userVid ? userVid.uploader_avatar : `https://ui-avatars.com/api/?name=${currentPublicUser}`;
